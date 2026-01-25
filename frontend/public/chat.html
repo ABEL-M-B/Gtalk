@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTalks</title>
+    <link rel="stylesheet" href="../src/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Left Sidebar -->
+        <div class="sidebar">
+            <!-- Sidebar Header -->
+            <div class="sidebar-header">
+                <div class="user-profile">
+                    <img src="https://via.placeholder.com/40" alt="Profile" class="profile-img" id="userAvatar">
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" title="Communities">
+                        <i class="fas fa-users"></i>
+                    </button>
+                    <button class="icon-btn" title="Status">
+                        <i class="fas fa-circle-notch"></i>
+                    </button>
+                    <button class="icon-btn" title="Channels">
+                        <i class="fas fa-broadcast-tower"></i>
+                    </button>
+                    <button class="icon-btn" title="New Chat">
+                        <i class="fas fa-message"></i>
+                    </button>
+                    <button class="icon-btn" title="Menu" id="menuBtn">
+                        <i class="fas fa-ellipsis-vertical"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="search-container">
+                <div class="search-box">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" placeholder="Search or start new chat" class="search-input">
+                </div>
+                <button class="filter-btn">
+                    <i class="fas fa-bars-filter"></i>
+                </button>
+            </div>
+
+            <!-- Chat Tabs -->
+            <div class="chat-tabs">
+                <button class="tab-btn active">All</button>
+                <button class="tab-btn">Unread</button>
+                <button class="tab-btn">Favorites</button>
+                <button class="tab-btn">Groups</button>
+            </div>
+
+            <!-- Chat List -->
+            <div class="chat-list" id="chatList">
+                <!-- Chats will be dynamically loaded here -->
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="chat-area" id="chatArea">
+            <!-- Empty State (shown when no chat is selected) -->
+            <div class="empty-state" id="emptyState">
+                <div class="logo-icon large">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h2>GTalks Web</h2>
+                <p>Send and receive messages with friends and family. Start a conversation by selecting a chat or creating a new one.</p>
+            </div>
+
+            <!-- Chat Content (hidden by default) -->
+            <div class="chat-content hidden" id="chatContent">
+                <!-- Chat Header -->
+                <div class="chat-area-header">
+                    <div class="chat-contact-info">
+                        <img src="https://via.placeholder.com/40" alt="Contact" class="contact-avatar" id="contactAvatar">
+                        <div class="contact-details">
+                            <h3 class="contact-name" id="contactName">Select a chat</h3>
+                            <p class="contact-status" id="contactStatus">-</p>
+                        </div>
+                    </div>
+                    <div class="chat-actions">
+                        <button class="icon-btn" title="Video Call">
+                            <i class="fas fa-video"></i>
+                        </button>
+                        <button class="icon-btn" title="Voice Call">
+                            <i class="fas fa-phone"></i>
+                        </button>
+                        <button class="icon-btn" title="Search">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <button class="icon-btn" title="Menu">
+                            <i class="fas fa-ellipsis-vertical"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Messages Container -->
+                <div class="messages-container" id="messagesContainer">
+                    <div class="messages-wrapper" id="messagesWrapper">
+                        <!-- Messages will be dynamically loaded here -->
+                    </div>
+                </div>
+
+                <!-- Message Input Area -->
+                <div class="message-input-area">
+                    <button class="icon-btn emoji-btn" title="Emoji">
+                        <i class="fas fa-face-smile"></i>
+                    </button>
+                    <button class="icon-btn attach-btn" title="Attach">
+                        <i class="fas fa-paperclip"></i>
+                    </button>
+                    <div class="input-wrapper">
+                        <input type="text" placeholder="Type a message" class="message-input" id="messageInput">
+                    </div>
+                    <button class="icon-btn send-btn hidden" title="Send" id="sendBtn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <button class="icon-btn mic-btn" title="Voice Message" id="micBtn">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel (Contact Info) -->
+        <div class="contact-panel hidden" id="contactPanel">
+            <div class="panel-header">
+                <button class="icon-btn close-panel" id="closePanel">
+                    <i class="fas fa-xmark"></i>
+                </button>
+                <h3>Contact Info</h3>
+            </div>
+            <div class="panel-content">
+                <div class="panel-profile">
+                    <img src="https://via.placeholder.com/200" alt="Profile" class="panel-avatar" id="panelAvatar">
+                    <h2 class="panel-name" id="panelName">-</h2>
+                    <p class="panel-phone" id="panelPhone">-</p>
+                </div>
+                <div class="panel-section">
+                    <h4>About</h4>
+                    <p id="panelAbout">Available</p>
+                </div>
+                <div class="panel-section">
+                    <h4>Media, Links and Docs</h4>
+                    <div class="media-preview" id="mediaPreview">
+                        <!-- Media will be dynamically loaded here -->
+                    </div>
+                </div>
+                <div class="panel-actions">
+                    <button class="action-btn">
+                        <i class="fas fa-star"></i>
+                        <span>Starred Messages</span>
+                    </button>
+                    <button class="action-btn">
+                        <i class="fas fa-bell"></i>
+                        <span>Mute Notifications</span>
+                    </button>
+                    <button class="action-btn danger">
+                        <i class="fas fa-ban"></i>
+                        <span>Block</span>
+                    </button>
+                    <button class="action-btn danger">
+                        <i class="fas fa-thumbs-down"></i>
+                        <span>Report</span>
+                    </button>
+                    <button class="action-btn danger" id="deleteChatBtn">
+                        <i class="fas fa-trash"></i>
+                        <span>Delete Chat</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dropdown Menu -->
+    <div class="dropdown-menu hidden" id="dropdownMenu">
+        <div class="dropdown-item" id="newGroupBtn">
+            <i class="fas fa-users"></i>
+            <span>New group</span>
+        </div>
+        <div class="dropdown-item" id="settingsBtn">
+            <i class="fas fa-gear"></i>
+            <span>Settings</span>
+        </div>
+        <div class="dropdown-item" id="logoutBtn">
+            <i class="fas fa-right-from-bracket"></i>
+            <span>Log out</span>
+        </div>
+    </div>
+
+    <script>
+        // Logout handler
+        document.getElementById('logoutBtn').addEventListener('click', function() {
+            window.location.href = '/api/auth/logout';
+        });
+
+        const dropdownMenu = document.getElementById('dropdownMenu');
+        const menuBtn = document.getElementById('menuBtn');
+
+        // Helper to position dropdown below menuBtn (fixed positioning)
+        function positionDropdownMenu() {
+            const btnRect = menuBtn.getBoundingClientRect();
+            dropdownMenu.style.position = 'fixed';
+            dropdownMenu.style.top = (btnRect.bottom + 8) + 'px';
+            dropdownMenu.style.left = (btnRect.left) + 'px';
+            dropdownMenu.style.right = '';
+        }
+
+        // Menu toggle
+        menuBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            positionDropdownMenu();
+            dropdownMenu.classList.toggle('hidden');
+        });
+
+        // Prevent closing when clicking inside the dropdown
+        dropdownMenu.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function() {
+            dropdownMenu.classList.add('hidden');
+        });
+
+
+
+        const chatList = document.getElementById('chatList');
+        const searchInput = document.querySelector('.search-input');
+
+        // Render users in chat-list
+        function renderUsers(users) {
+            chatList.innerHTML = '';
+            if (!users.length) {
+                chatList.innerHTML = '<div class="chat-item"><span>No users found.</span></div>';
+                return;
+            }
+            users.forEach(user => {
+                const item = document.createElement('div');
+                item.className = 'chat-item';
+                item.innerHTML = `
+                    <img src="${user.avatar || 'https://via.placeholder.com/49'}" class="chat-avatar" alt="${user.name}">
+                    <div class="chat-info">
+                        <div class="chat-header">
+                            <span class="chat-name">${user.name}</span>
+                        </div>
+                        <div class="chat-preview">
+                            <span class="last-message">${user.about || ''}</span>
+                        </div>
+                    </div>
+                `;
+                // Ensure googleId is available for message API
+                const googleId = user.googleId || user.id || user._id;
+                item.addEventListener('click', () => showChatWithUser({...user, googleId}));
+                chatList.appendChild(item);
+            });
+        }
+
+        // Fetch all users
+        function fetchAllUsers() {
+            fetch('/api/users')
+                .then(res => res.json())
+                .then(data => renderUsers(data.users || []))
+                .catch(() => renderUsers([]));
+        }
+
+        // Search users
+        function searchUsers(query) {
+            fetch('/api/users/search?q=' + encodeURIComponent(query))
+                .then(res => res.json())
+                .then(data => renderUsers(data.users || []))
+                .catch(() => renderUsers([]));
+        }
+
+        // Initial load
+        fetchAllUsers();
+
+        // Search input handler
+        searchInput.addEventListener('input', function() {
+            const query = this.value.trim();
+            if (query) {
+                searchUsers(query);
+            } else {
+                fetchAllUsers();
+            }
+        });
+
+
+        
+        
+        
+
+        //chat scripts
+        let selectedUser = null;
+
+        function showChatWithUser(user) {
+            selectedUser = user;
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('chatContent').classList.remove('hidden');
+            document.getElementById('contactName').textContent = user.name;
+            document.getElementById('contactAvatar').src = user.avatar || 'https://via.placeholder.com/40';
+            document.getElementById('contactStatus').textContent = user.status || '';
+            fetchMessagesWithUser(user);
+        }
+
+        // Helper to render messages
+        function renderMessages(messages) {
+            const wrapper = document.getElementById('messagesWrapper');
+            wrapper.innerHTML = '';
+            messages.forEach(msg => {
+                const div = document.createElement('div');
+                // Sent/received styling
+                const isSent = msg.from !== selectedUser.googleId;
+                div.className = 'message-bubble' + (isSent ? ' sent' : ' received');
+                div.innerHTML = `
+                    <div class="message-text">${msg.text}</div>
+                    <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                `;
+                wrapper.appendChild(div);
+            });
+            wrapper.scrollTop = wrapper.scrollHeight;
+        }
+
+        // Fetch messages for selected user
+        async function fetchMessagesWithUser(user) {
+            try {
+                const res = await fetch(`/api/messages?to=${encodeURIComponent(user.googleId)}`);
+                const data = await res.json();
+                renderMessages(data.messages || []);
+            } catch (e) {
+                renderMessages([]);
+            }
+        }
+
+        // Send message logic
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        // Show send icon only when input has text
+        messageInput.addEventListener('input', function() {
+            if (this.value.trim()) {
+                sendBtn.classList.remove('hidden');
+            } else {
+                sendBtn.classList.add('hidden');
+            }
+        });
+
+        // Send message on click
+        sendBtn.addEventListener('click', async function() {
+            const text = messageInput.value.trim();
+            if (!text || !selectedUser) return;
+            sendBtn.disabled = true;
+            try {
+                const res = await fetch('/api/messages', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({to: selectedUser.googleId, text})
+                });
+                if (res.ok) {
+                    messageInput.value = '';
+                    sendBtn.classList.add('hidden');
+                    fetchMessagesWithUser(selectedUser); // Refresh messages
+                }
+            } finally {
+                sendBtn.disabled = false;
+            }
+        });
+
+        // Optionally, send message on Enter key
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey && !sendBtn.classList.contains('hidden')) {
+                sendBtn.click();
+                e.preventDefault();
+            }
+        });
+    </script>
+</html>

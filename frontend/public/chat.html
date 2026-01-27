@@ -316,11 +316,20 @@
                 const div = document.createElement('div');
                 // Sent/received styling
                 const isSent = msg.from !== selectedUser.googleId;
-                div.className = 'message-bubble' + (isSent ? ' sent' : ' received');
+                 div.className = `message ${isSent ? 'sent' : 'received'}`;
+
                 div.innerHTML = `
-                    <div class="message-text">${msg.text}</div>
-                    <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                    <div class="message-content">
+                        <p>${msg.text}</p>
+                        <span class="message-time">
+                            ${new Date(msg.timestamp).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })}
+                        </span>
+                    </div>
                 `;
+                
                 wrapper.appendChild(div);
             });
             wrapper.scrollTop = wrapper.scrollHeight;

@@ -1,5 +1,5 @@
 // filepath: backend/models/authModel.js
-const pool = require('../config/db');
+//const pool = require('../config/db');
 const User = require('./userModel')
 
 const findByGoogleId = async (googleId) => {
@@ -9,6 +9,7 @@ const findByGoogleId = async (googleId) => {
 const createUser = async ({ google_id, email, name, avatar }) => {
     const user = new User({
         googleId: google_id,
+        email,
         name,
         avatar,
         // You can add email and other fields to the schema if needed

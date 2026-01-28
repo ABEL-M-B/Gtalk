@@ -3,8 +3,8 @@ const messagesConnection = require('../config/mongodb_messages')();
 
 const messageSchema = new mongoose.Schema(
     {
-        from: {type:String,required:true},
-        to: {type:String,required:true},
+        from: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        to: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         text: {type:String,required:true},
         timestamp :{type:Date,default:Date.now()}
     }

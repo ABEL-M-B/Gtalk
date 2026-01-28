@@ -5,7 +5,9 @@ const mongoose = require('mongoose')
 
 const userSchema = new mongoose.Schema(
     {
-        googleId :{type:String,required: true, unique: true},
+        googleId :{type:String,required:false, unique: true,sparse:true},
+        email:{type:String,unique: true, sparse:true},
+        password:{type: String},
         name : {type: String,required:true},
         avatar: {type: String},
         status: {type: String}

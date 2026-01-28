@@ -48,10 +48,17 @@
                 <span>or</span>
             </div>
 
-            <!-- Alternative Login (for future use) -->
+            <!-- Email/Password Login Form -->
+            <form class="email-login-form" id="emailLoginForm">
+                <input type="email" id="loginEmail" placeholder="Email" required autocomplete="username">
+                <input type="password" id="loginPassword" placeholder="Password" required autocomplete="current-password">
+                <button type="submit" class="login-btn">Login</button>
+            </form>
+
+            <!-- Alternative Login -->
             <div class="alt-login">
                 <p class="alt-login-text">Don't have an account?</p>
-                <a href="#" class="signup-link">Sign up with Google</a>
+                <a href="register.html" class="signup-link">Sign up</a>
             </div>
 
             <!-- Terms -->
@@ -72,6 +79,35 @@
             // Redirect to backend OAuth endpoint
             window.location.href = '/api/auth/google';
         });
+
+        // Email/Password Login
+        document.getElementById('emailLoginForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        const btn = this.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.textContent = "Logging in...";
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                window.location.href = 'chat.html';
+            } else {
+                alert(data.message || 'Login failed. Please check your credentials.');
+            }
+        } catch (err) {
+            alert('Network error. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Login";
+        }
+    });
     </script>
 </body>
 </html>

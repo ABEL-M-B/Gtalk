@@ -2,7 +2,7 @@ const Message = require('../models/messageModel');
 
 const getMessages = async (req, res) => {
     try {
-        const from = req.user.googleId; // Fix: Use req.user.googleId
+        const from = req.user._id
         const to = req.query.to;
 
         if (!to) {
@@ -24,7 +24,7 @@ const getMessages = async (req, res) => {
 
 const sendMessage = async (req, res) => {
     try {
-        const from = req.user.googleId; // Fix: Use req.user.googleId
+        const from = req.user._id
         const { to, text } = req.body;
 
         if (!to || !text) {

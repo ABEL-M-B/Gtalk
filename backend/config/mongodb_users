@@ -1,0 +1,25 @@
+const MONGO_URI_USERS = process.env.MONGO_URI_USERS
+const mongoose = require('mongoose');
+
+let connection;
+
+module.exports = () => {
+    if (!connection) {
+        try {
+            connection = mongoose.createConnection(MONGO_URI_USERS, {
+                useNewUrlParser: true,
+                useUnifiedTopology: true,
+            });
+            connection.on('connected', () => {
+                console.log('MongoDB (users) connected');
+            });
+            connection.on('error', (err) => {
+                console.error('MongoDB (users) connection error', err);
+            });
+        } catch (err) {
+            console.error('MongoDB (users) connection setup failed:', err);
+            process.exit(1);
+        }
+    }
+    return connection;
+};

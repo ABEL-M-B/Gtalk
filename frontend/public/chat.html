@@ -244,7 +244,7 @@
                 const item = document.createElement('div');
                 item.className = 'chat-item';
                 item.innerHTML = `
-                    <img src="${user.avatar || 'https://via.placeholder.com/49'}" class="chat-avatar" alt="${user.name}">
+                    <img src="${user.avatar || 'https://dummyimage.com/49x49/cccccc/000000&text=Avatar'}" class="chat-avatar" alt="${user.name}" onerror="this.src='https://dummyimage.com/49x49/cccccc/000000&text=Avatar'">
                     <div class="chat-info">
                         <div class="chat-header">
                             <span class="chat-name">${user.name}</span>
@@ -303,7 +303,10 @@
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('chatContent').classList.remove('hidden');
             document.getElementById('contactName').textContent = user.name;
-            document.getElementById('contactAvatar').src = user.avatar || 'https://via.placeholder.com/40';
+            document.getElementById('contactAvatar').src = user.avatar || 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
+            document.getElementById('contactAvatar').onerror = function() {
+                this.src = 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
+            };
             document.getElementById('contactStatus').textContent = user.status || '';
             fetchMessagesWithUser(user);
         }

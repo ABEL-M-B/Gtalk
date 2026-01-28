@@ -1,20 +1,42 @@
 require('dotenv').config()
 require('./config/passport')
 const express = require('express');
+const http = require('http')
+const socketIo = require('socket.io')
 const path = require('path');
 const session = require('express-session')
 const passport = require('passport')
-const connectMongo = require('./config/mongodb')
+const connectMongoMessages = require('./config/mongodb_messages')
+const connectMongoUsers = require('./config/mongodb_users')
 
 
 
-connectMongo()
+connectMongoMessages()
+connectMongoUsers()
+
 
 const authRoute = require('./routes/authRoute')
 const userRoute = require('./routes/userRoute')
 const messageRoute = require('./routes/messageRoute')
 
 const app = express();
+const server = http.createServer(app); // create http server 
+const io = socketIo(server);    //bind socket 
+
+
+// socket logic
+const userSocketMap = new Map();
+
+io.on('connection',(socket) => 
+    {
+        //when a user connect get the googleId
+        socket.on('register',(googleId) => 
+            {
+                userSocketMap.set(googleId,socket.id);
+                socket.googleId = googleId
+            })
+    }
+)
 
 
 app.use(express.json());
@@ -51,6 +73,6 @@ app.use((req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running on port localhost://${PORT}`);
 });

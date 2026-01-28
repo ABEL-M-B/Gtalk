@@ -1,4 +1,5 @@
 const mongoose = require('mongoose')
+const messagesConnection = require('../config/mongodb_messages')();
 
 const messageSchema = new mongoose.Schema(
     {
@@ -9,6 +10,6 @@ const messageSchema = new mongoose.Schema(
     }
 );
 
-const Message = mongoose.model('Message', messageSchema, 'message');
+const Message = messagesConnection.model('Message', messageSchema, 'message');
 
 module.exports = Message;

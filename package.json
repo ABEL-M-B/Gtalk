@@ -2,4 +2,8 @@
   "scripts": {
     "start": "cd backend && npm start"
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 97c02645b6c01751b662c7b705ead667b2e34dd8

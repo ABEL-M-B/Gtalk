@@ -2,8 +2,8 @@ const User = require('../models/userModel'); // Fix: Use User, not userModel
 
 const getAllUsers = async (req, res) => {
     try {
-        const currentGoogleId = req.user.googleId; // Fix: Use req.user.googleId
-        const users = await User.find({ googleId: { $ne: currentGoogleId } }).select('googleId name avatar status'); // Fix: googleId, not googelId
+        const currentUserId = req.user._id; // Use MongoDB ObjectId for all users
+        const users = await User.find({ _id: { $ne: currentUserId } }).select('googleId email name avatar status');
         res.json({ users });
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });

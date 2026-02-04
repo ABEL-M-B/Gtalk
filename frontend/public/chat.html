@@ -111,9 +111,31 @@
                     <button class="icon-btn emoji-btn" title="Emoji">
                         <i class="fas fa-face-smile"></i>
                     </button>
-                    <button class="icon-btn attach-btn" title="Attach">
-                        <i class="fas fa-paperclip"></i>
-                    </button>
+                    <div class="attach-container">
+                        <button class="icon-btn attach-btn" title="Attach" id="attachBtn">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <!-- Upward Dropdown Menu -->
+                        <div class="attach-dropdown hidden" id="attachDropdown">
+                            <div class="attach-dropdown-item" id="imageUploadBtn">
+                                <i class="fas fa-image"></i>
+                                <span>Photos</span>
+                            </div>
+                            <div class="attach-dropdown-item">
+                                <i class="fas fa-file"></i>
+                                <span>Document</span>
+                            </div>
+                            <div class="attach-dropdown-item">
+                                <i class="fas fa-camera"></i>
+                                <span>Camera</span>
+                            </div>
+                            <div class="attach-dropdown-item">
+                                <i class="fas fa-user"></i>
+                                <span>Contact</span>
+                            </div>
+                        </div>
+                        <input type="file" accept="image/*" id="imageInput" style="display:none">
+                    </div>
                     <div class="input-wrapper">
                         <input type="text" placeholder="Type a message" class="message-input" id="messageInput">
                     </div>
@@ -174,6 +196,17 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Image Lightbox Modal -->
+    <div class="lightbox hidden" id="imageLightbox">
+        <div class="lightbox-overlay"></div>
+        <div class="lightbox-content">
+            <button class="lightbox-close" id="lightboxClose">
+                <i class="fas fa-xmark"></i>
+            </button>
+            <img src="" alt="Full Image" class="lightbox-image" id="lightboxImage">
         </div>
     </div>
 
@@ -323,19 +356,38 @@
                 const div = document.createElement('div');
                 // Sent/received styling
                 const isSent = String(msg.from) === String(currentUserId);
-                 div.className = `message ${isSent ? 'sent' : 'received'}`;
+                div.className = `message ${isSent ? 'sent' : 'received'}`;
 
-                div.innerHTML = `
-                    <div class="message-content">
-                        <p>${msg.text}</p>
-                        <span class="message-time">
-                            ${new Date(msg.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
-                        </span>
-                    </div>
-                `;
+                // Check if it's an image message
+                if (msg.url) {
+                    div.innerHTML = `
+                        <div class="message-content message-image">
+                            <img src="${msg.url}" alt="Image" class="shared-image" data-fullsize="${msg.url}">
+                            <span class="message-time">
+                                ${new Date(msg.timestamp).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                })}
+                            </span>
+                        </div>
+                    `;
+                    // Add click handler for image
+                    div.querySelector('.shared-image').addEventListener('click', function() {
+                        openLightbox(this.dataset.fullsize);
+                    });
+                } else {
+                    div.innerHTML = `
+                        <div class="message-content">
+                            <p>${msg.text}</p>
+                            <span class="message-time">
+                                ${new Date(msg.timestamp).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                })}
+                            </span>
+                        </div>
+                    `;
+                }
                 
                 wrapper.appendChild(div);
             });
@@ -392,6 +444,83 @@
             if (e.key === 'Enter' && !e.shiftKey && !sendBtn.classList.contains('hidden')) {
                 sendBtn.click();
                 e.preventDefault();
+            }
+        });
+
+        // Lightbox logic
+        const lightbox = document.getElementById('imageLightbox');
+        const lightboxImage = document.getElementById('lightboxImage');
+        const lightboxClose = document.getElementById('lightboxClose');
+        const lightboxOverlay = document.querySelector('.lightbox-overlay');
+
+        function openLightbox(imageUrl) {
+            lightboxImage.src = imageUrl;
+            lightbox.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            lightbox.classList.add('hidden');
+            lightboxImage.src = '';
+            document.body.style.overflow = '';
+        }
+
+        lightboxClose.addEventListener('click', closeLightbox);
+        lightboxOverlay.addEventListener('click', closeLightbox);
+
+        // Close lightbox on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !lightbox.classList.contains('hidden')) {
+                closeLightbox();
+            }
+        });
+
+        // Attach dropdown logic
+        const attachBtn = document.getElementById('attachBtn');
+        const attachDropdown = document.getElementById('attachDropdown');
+        const imageUploadBtn = document.getElementById('imageUploadBtn');
+        const imageInput = document.getElementById('imageInput');
+
+        attachBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            attachDropdown.classList.toggle('hidden');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!attachDropdown.contains(e.target) && e.target !== attachBtn) {
+                attachDropdown.classList.add('hidden');
+            }
+        });
+
+        // Open file picker for images
+        imageUploadBtn.addEventListener('click', function() {
+            imageInput.click();
+            attachDropdown.classList.add('hidden');
+        });
+
+        // Handle image upload
+        imageInput.addEventListener('change', async function() {
+            if (!this.files.length || !selectedUser) return;
+            const file = this.files[0];
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('to', selectedUser._id);
+
+            try {
+                const res = await fetch('/api/images/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (res.ok) {
+                    fetchMessagesWithUser(selectedUser);
+                } else {
+                    alert('Image upload failed');
+                }
+            } catch (err) {
+                alert('Image upload error');
+            } finally {
+                imageInput.value = '';
             }
         });
     </script>

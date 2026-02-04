@@ -15,9 +15,11 @@ connectMongoMessages()
 connectMongoUsers()
 
 
+
 const authRoute = require('./routes/authRoute')
 const userRoute = require('./routes/userRoute')
 const messageRoute = require('./routes/messageRoute')
+const imageRoute = require('./routes/imageRoute')
 
 const app = express();
 const server = http.createServer(app); // create http server 
@@ -66,6 +68,7 @@ app.use(passport.session());
 app.use("/api/auth",authRoute);
 app.use("/api/users",userRoute);
 app.use("/api/messages",messageRoute);
+app.use("/api/images",imageRoute)
 
 // 404 handler
 app.use((req, res) => {

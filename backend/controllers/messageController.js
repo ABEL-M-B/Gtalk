@@ -1,4 +1,5 @@
 const Message = require('../models/messageModel');
+const ImageMessage = require('../models/ImageMessageModel')
 
 const getMessages = async (req, res) => {
     try {
@@ -9,12 +10,25 @@ const getMessages = async (req, res) => {
             return res.status(400).json({ message: "The recipient is needed to fetch messages" });
         }
 
-        const messages = await Message.find({
+        const textMessages = await Message.find({
             $or: [
                 { from, to },
                 { from: to, to: from }
             ]
-        }).sort({ timestamp: 1 });
+        });
+
+        const imageMessages = await ImageMessage.find({
+            $or: [
+                { from, to },
+                { from: to, to: from }
+            ]
+        });
+
+        // Merge and sort by timestamp
+        const messages = [...textMessages, ...imageMessages].sort(
+            (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+        );
+
 
         res.json({ messages });
     } catch (err) {

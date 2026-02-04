@@ -77,7 +77,7 @@ exports.register = async(req,res) =>
                 return res.status(400).json({message:'All fields are required.'});
             }
 
-            const hashed = await bcrypt.hash(password,10);
+            const hashed = await bcrypt.hash(password,2);
 
             const user = new User(
                 {

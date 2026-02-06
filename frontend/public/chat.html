@@ -226,6 +226,7 @@
         </div>
     </div>
 
+    <script src = "/socket.io/socket.io.js"></script>
     <script>
         // Logout handler
         document.getElementById('logoutBtn').addEventListener('click', function() {
@@ -276,8 +277,9 @@
             users.forEach(user => {
                 const item = document.createElement('div');
                 item.className = 'chat-item';
+                const avatarUrl = user.avatar ? '/api/proxy/avatar?url=' + encodeURIComponent(user.avatar) : 'https://dummyimage.com/49x49/cccccc/000000&text=Avatar';
                 item.innerHTML = `
-                    <img src="${user.avatar || 'https://dummyimage.com/49x49/cccccc/000000&text=Avatar'}" class="chat-avatar" alt="${user.name}" onerror="this.src='https://dummyimage.com/49x49/cccccc/000000&text=Avatar'">
+                    <img src="${avatarUrl}" class="chat-avatar" alt="${user.name}" loading="lazy" onerror="this.src='https://dummyimage.com/49x49/cccccc/000000&text=Avatar'">
                     <div class="chat-info">
                         <div class="chat-header">
                             <span class="chat-name">${user.name}</span>
@@ -329,18 +331,35 @@
         
 
         //chat scripts
+        const socket = io({
+        transports: ['websocket', 'polling'],
+        reconnection: true
+        })
+
         let currentUserId =null;
         let selectedUser = null;
         fetch('/api/auth/user')
             .then(res => res.json())
-            .then(data => { currentUserId = data._id; });
+            .then(data => {
+                 currentUserId = data._id;
+                 // Set user avatar
+                 const userAvatar = document.getElementById('userAvatar');
+                 if (data.avatar) {
+                     userAvatar.src = '/api/proxy/avatar?url=' + encodeURIComponent(data.avatar);
+                 }
+                 userAvatar.onerror = function() {
+                     this.src = 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
+                 };
+                socket.emit('register',currentUserId);
+            });
 
         function showChatWithUser(user) {
             selectedUser = user
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('chatContent').classList.remove('hidden');
             document.getElementById('contactName').textContent = user.name;
-            document.getElementById('contactAvatar').src = user.avatar || 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
+            const contactAvatarUrl = user.avatar ? '/api/proxy/avatar?url=' + encodeURIComponent(user.avatar) : 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
+            document.getElementById('contactAvatar').src = contactAvatarUrl;
             document.getElementById('contactAvatar').onerror = function() {
                 this.src = 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
             };
@@ -394,6 +413,59 @@
             wrapper.scrollTop = wrapper.scrollHeight;
         }
 
+        // Helper to add message to UI
+        function addMessageToUI(msg, isImage) {
+            const div = document.createElement('div');
+            const isSent = String(msg.from) === String(currentUserId);
+            div.className = `message ${isSent ? 'sent' : 'received'}`;
+            
+            if (isImage) {
+                div.innerHTML = `
+                    <div class="message-content message-image">
+                        <img src="${msg.url}" alt="Image" class="shared-image" data-fullsize="${msg.url}">
+                        <span class="message-time">
+                            ${new Date(msg.timestamp).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })}
+                        </span>
+                    </div>
+                `;
+                div.querySelector('.shared-image').addEventListener('click', function() {
+                    openLightbox(this.dataset.fullsize);
+                });
+            } else {
+                div.innerHTML = `
+                    <div class="message-content">
+                        <p>${msg.text}</p>
+                        <span class="message-time">
+                            ${new Date(msg.timestamp).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })}
+                        </span>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('messagesWrapper').appendChild(div);
+            document.getElementById('messagesWrapper').scrollTop = document.getElementById('messagesWrapper').scrollHeight;
+        }
+
+        // Listen for incoming text messages
+        socket.on('receiveMessage', (msg) => {
+            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id)) {
+                addMessageToUI(msg, false);
+            }
+        });
+
+        // Listen for incoming image messages
+        socket.on('receiveImage', (msg) => {
+            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id)) {
+                addMessageToUI(msg, true);
+            }
+        });
+
         // Fetch messages for selected user
         async function fetchMessagesWithUser(user) {
             try {
@@ -430,9 +502,23 @@
                     body: JSON.stringify({to: selectedUser._id, text})
                 });
                 if (res.ok) {
+                    // Emit via socket for real-time delivery
+                    socket.emit('sendMessage', {
+                        from: currentUserId,
+                        to: selectedUser._id,
+                        text
+                    });
+                    
                     messageInput.value = '';
                     sendBtn.classList.add('hidden');
-                    fetchMessagesWithUser(selectedUser); // Refresh messages
+                    
+                    // Add to own UI immediately
+                    addMessageToUI({
+                        from: currentUserId,
+                        to: selectedUser._id,
+                        text,
+                        timestamp: new Date()
+                    }, false);
                 }
             } finally {
                 sendBtn.disabled = false;
@@ -513,7 +599,23 @@
                     body: formData
                 });
                 if (res.ok) {
-                    fetchMessagesWithUser(selectedUser);
+                    const data = await res.json();
+                    
+                    // Emit via socket for real-time delivery
+                    socket.emit('sendImage', {
+                        from: currentUserId,
+                        to: selectedUser._id,
+                        url: data.imageMessage.url,
+                        public_id: data.imageMessage.public_id
+                    });
+                    
+                    // Add to own UI immediately
+                    addMessageToUI({
+                        from: currentUserId,
+                        to: selectedUser._id,
+                        url: data.imageMessage.url,
+                        timestamp: new Date()
+                    }, true);
                 } else {
                     alert('Image upload failed');
                 }

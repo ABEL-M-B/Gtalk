@@ -19,26 +19,80 @@ connectMongoUsers()
 const authRoute = require('./routes/authRoute')
 const userRoute = require('./routes/userRoute')
 const messageRoute = require('./routes/messageRoute')
-const imageRoute = require('./routes/imageRoute')
+const imageRoute = require('./routes/imageRoute');
+const proxyRoute = require('./routes/proxyRoute');
+const { timeStamp } = require('console');
 
 const app = express();
 const server = http.createServer(app); // create http server 
-const io = socketIo(server);    //bind socket 
+const io = socketIo(server,{
+    cors:{
+        origin:'*',
+        methods: ['GET','POST']
+    }
+});    //bind socket 
 
 
 // socket logic
 const userSocketMap = new Map();
 
 io.on('connection',(socket) => 
-    {
+    {   
+        console.log('User connected:',socket.id);
         //when a user connect get the googleId
-        socket.on('register',(googleId) => 
+        socket.on('register',(userId) => 
             {
-                userSocketMap.set(googleId,socket.id);
-                socket.googleId = googleId
-            })
-    }
-)
+                userSocketMap.set(userId,socket.id);
+                socket.userId = userId
+            });
+
+        socket.on('sendMessage',(data) =>
+            {
+                const {to,text,from} = data;
+                
+                const recipientSocketId = userSocketMap.get(to)
+                if (recipientSocketId){
+                    io.to(recipientSocketId).emit('receiveMessage',
+                        {
+                            from,
+                            to,
+                            text,
+                            timestamp: new Date()
+                        });
+                }
+                socket.emit('messageSent',{success:true});
+            });
+        
+        //images
+        socket.on('sendImage',(data) =>
+            {
+                const{to,url,public_id,from} = data;
+
+                const recipientSocketId = userSocketMap.get(to)
+                if (recipientSocketId)
+                    {
+                        io.to(recipientSocketId).emit('receiveImage',
+                            {
+                                from,
+                                to,
+                                url,
+                                public_id,
+                                timestamp: new Date()
+                            });
+                    }
+                socket.emit('imageSent',{success:true});
+            });
+
+        socket.on('disconnect',() =>
+            {
+                if (socket.userId)
+                    {
+                        userSocketMap.delete(socket.userId);
+                        console.log(`User ${socket.userId} disconnected`);
+                    }
+            });
+        }
+);
 
 
 app.use(express.json());
@@ -69,6 +123,7 @@ app.use("/api/auth",authRoute);
 app.use("/api/users",userRoute);
 app.use("/api/messages",messageRoute);
 app.use("/api/images",imageRoute)
+app.use("/api/proxy",proxyRoute)
 
 // 404 handler
 app.use((req, res) => {

@@ -370,7 +370,9 @@
         // Helper to render messages
         function renderMessages(messages) {
             const wrapper = document.getElementById('messagesWrapper');
+            const container = document.getElementById('messagesContainer');
             wrapper.innerHTML = '';
+            
             messages.forEach(msg => {
                 const div = document.createElement('div');
                 // Sent/received styling
@@ -381,7 +383,9 @@
                 if (msg.url) {
                     div.innerHTML = `
                         <div class="message-content message-image">
-                            <img src="${msg.url}" alt="Image" class="shared-image" data-fullsize="${msg.url}">
+                            <div style="width: 300px; height: 200px; background: #374045; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-image" style="font-size: 2rem; color: #8696a0;"></i>
+                            </div>
                             <span class="message-time">
                                 ${new Date(msg.timestamp).toLocaleTimeString([], {
                                     hour: '2-digit',
@@ -390,8 +394,22 @@
                             </span>
                         </div>
                     `;
-                    // Add click handler for image
-                    div.querySelector('.shared-image').addEventListener('click', function() {
+                    
+                    wrapper.appendChild(div);
+                    
+                    // Load actual image
+                    const img = new Image();
+                    img.src = msg.url;
+                    img.className = 'shared-image';
+                    img.setAttribute('data-fullsize', msg.url);
+                    img.onload = function() {
+                        // Replace placeholder with actual image
+                        const placeholder = div.querySelector('.message-content > div');
+                        if (placeholder) {
+                            placeholder.replaceWith(img);
+                        }
+                    };
+                    img.addEventListener('click', function() {
                         openLightbox(this.dataset.fullsize);
                     });
                 } else {
@@ -406,11 +424,14 @@
                             </span>
                         </div>
                     `;
+                    wrapper.appendChild(div);
                 }
-                
-                wrapper.appendChild(div);
             });
-            document.getElementById('messagesContainer').scrollTop = document.getElementById('messagesContainer').scrollHeight;
+            
+            // Scroll to bottom immediately since placeholders are already sized
+            requestAnimationFrame(() => {
+                container.scrollTop = container.scrollHeight;
+            });
         }
 
         // Helper to add message to UI

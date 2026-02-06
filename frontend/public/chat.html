@@ -454,14 +454,18 @@
 
         // Listen for incoming text messages
         socket.on('receiveMessage', (msg) => {
-            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id)) {
+            // Show message if chatting with the sender OR if you sent it
+            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id || 
+                (msg.from === currentUserId && msg.to === selectedUser._id))) {
                 addMessageToUI(msg, false);
             }
         });
 
         // Listen for incoming image messages
         socket.on('receiveImage', (msg) => {
-            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id)) {
+            // Show image if chatting with the sender OR if you sent it
+            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id ||
+                (msg.from === currentUserId && msg.to === selectedUser._id))) {
                 addMessageToUI(msg, true);
             }
         });
@@ -511,14 +515,7 @@
                     
                     messageInput.value = '';
                     sendBtn.classList.add('hidden');
-                    
-                    // Add to own UI immediately
-                    addMessageToUI({
-                        from: currentUserId,
-                        to: selectedUser._id,
-                        text,
-                        timestamp: new Date()
-                    }, false);
+                    // Message will be added via socket 'receiveMessage' event
                 }
             } finally {
                 sendBtn.disabled = false;
@@ -608,14 +605,7 @@
                         url: data.imageMessage.url,
                         public_id: data.imageMessage.public_id
                     });
-                    
-                    // Add to own UI immediately
-                    addMessageToUI({
-                        from: currentUserId,
-                        to: selectedUser._id,
-                        url: data.imageMessage.url,
-                        timestamp: new Date()
-                    }, true);
+                    // Image will be added via socket 'receiveImage' event
                 } else {
                     alert('Image upload failed');
                 }

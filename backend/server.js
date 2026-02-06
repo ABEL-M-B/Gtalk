@@ -49,38 +49,44 @@ io.on('connection',(socket) =>
         socket.on('sendMessage',(data) =>
             {
                 const {to,text,from} = data;
+                const messageData = {
+                    from,
+                    to,
+                    text,
+                    timestamp: new Date()
+                };
                 
+                // Emit to recipient
                 const recipientSocketId = userSocketMap.get(to)
                 if (recipientSocketId){
-                    io.to(recipientSocketId).emit('receiveMessage',
-                        {
-                            from,
-                            to,
-                            text,
-                            timestamp: new Date()
-                        });
+                    io.to(recipientSocketId).emit('receiveMessage', messageData);
                 }
-                socket.emit('messageSent',{success:true});
+                
+                // Emit back to sender
+                socket.emit('receiveMessage', messageData);
             });
         
         //images
         socket.on('sendImage',(data) =>
             {
                 const{to,url,public_id,from} = data;
+                const imageData = {
+                    from,
+                    to,
+                    url,
+                    public_id,
+                    timestamp: new Date()
+                };
 
+                // Emit to recipient
                 const recipientSocketId = userSocketMap.get(to)
                 if (recipientSocketId)
                     {
-                        io.to(recipientSocketId).emit('receiveImage',
-                            {
-                                from,
-                                to,
-                                url,
-                                public_id,
-                                timestamp: new Date()
-                            });
+                        io.to(recipientSocketId).emit('receiveImage', imageData);
                     }
-                socket.emit('imageSent',{success:true});
+                
+                // Emit back to sender
+                socket.emit('receiveImage', imageData);
             });
 
         socket.on('disconnect',() =>

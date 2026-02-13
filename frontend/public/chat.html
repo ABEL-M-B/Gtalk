@@ -651,6 +651,7 @@
         let localStream = null;
         let peerConnection = null;
         let isCallActive = false;
+        let iceCandidateQueue = []; // Queue for ICE candidates that arrive early
         const configuration = {
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         };
@@ -696,6 +697,7 @@
                 peerConnection = null;
             }
             isCallActive = false;
+            iceCandidateQueue = []; // Clear the queue
         }
 
         // Voice call button handler
@@ -802,6 +804,12 @@
                     signalData: answer
                 });
 
+                // Process any queued ICE candidates
+                while (iceCandidateQueue.length > 0) {
+                    const candidate = iceCandidateQueue.shift();
+                    await peerConnection.addIceCandidate(candidate);
+                }
+
             } catch (error) {
                 console.error('Error accepting call:', error);
                 hideCallWindow();
@@ -819,12 +827,19 @@
         // Socket listeners for call events
         socket.on('incomingCall', ({ from, signalData }) => {
             if (signalData.type === 'offer') {
+                // Clear any old queued candidates from previous calls
+                iceCandidateQueue = [];
                 if (confirm('Incoming call. Accept?')) {
                     acceptCall(signalData);
                 }
             } else if (signalData.candidate) {
-                if (peerConnection) {
-                    peerConnection.addIceCandidate(signalData);
+                // Queue ICE candidate if peer connection not ready, otherwise add it
+                if (peerConnection && peerConnection.remoteDescription) {
+                    peerConnection.addIceCandidate(signalData).catch(err => {
+                        console.error('Error adding ICE candidate:', err);
+                    });
+                } else {
+                    iceCandidateQueue.push(signalData);
                 }
             }
         });
@@ -833,8 +848,18 @@
             try {
                 if (signalData.type === 'answer') {
                     await peerConnection.setRemoteDescription(signalData);
-                } else {
-                    await peerConnection.addIceCandidate(signalData);
+                    // Process any queued ICE candidates after setting remote description
+                    while (iceCandidateQueue.length > 0) {
+                        const candidate = iceCandidateQueue.shift();
+                        await peerConnection.addIceCandidate(candidate);
+                    }
+                } else if (signalData.candidate) {
+                    // Queue ICE candidate if remote description not set yet, otherwise add it
+                    if (peerConnection && peerConnection.remoteDescription) {
+                        await peerConnection.addIceCandidate(signalData);
+                    } else {
+                        iceCandidateQueue.push(signalData);
+                    }
                 }
             } catch (error) {
                 console.error('Error handling call accepted:', error);

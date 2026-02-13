@@ -88,6 +88,42 @@ io.on('connection',(socket) =>
                 // Emit back to sender
                 socket.emit('receiveImage', imageData);
             });
+        
+        //calluser
+        socket.on('callUser', ({to, signalData,from}) =>
+            {
+                const recipientSocketId = userSocketMap.get(to);
+                if (recipientSocketId)
+                    {
+                        io.to(recipientSocketId).emit('incomingCall', {from, signalData});
+                    }
+            }
+        )
+
+        //acceptuser
+        socket.on('acceptCall',({to,signalData}) => 
+            {
+                const recipientSocketId = userSocketMap.get(to);
+                if (recipientSocketId)
+                    {
+                        io.to(recipientSocketId).emit('callAccepted',{signalData});
+                    }
+            })
+
+        
+        //endcall
+        socket.on('endCall',({to}) =>
+            {
+                const recipientSocketId = userSocketMap.get(to);
+                if (recipientSocketId)
+                    {
+                        io.to(recipientSocketId).emit('callEnded')
+                    }
+            }
+        )
+
+
+
 
         socket.on('disconnect',() =>
             {

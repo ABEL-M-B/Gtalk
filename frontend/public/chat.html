@@ -84,10 +84,10 @@
                         </div>
                     </div>
                     <div class="chat-actions">
-                        <button class="icon-btn" title="Video Call">
+                        <button class="icon-btn" title="Video Call" id="videoCallBtn">
                             <i class="fas fa-video"></i>
                         </button>
-                        <button class="icon-btn" title="Voice Call">
+                        <button class="icon-btn" title="Voice Call" id="voiceCallBtn">
                             <i class="fas fa-phone"></i>
                         </button>
                         <button class="icon-btn" title="Search">
@@ -226,6 +226,17 @@
         </div>
     </div>
 
+    <!-- Floating Call Window -->
+    <div class="call-floating-window hidden" id="callFloatingWindow">
+        <div class="call-header" id="callHeader">
+            <span id="callStatus">Calling...</span>
+            <button id="endCallBtn" class="icon-btn" title="End Call">
+                <i class="fas fa-phone-slash"></i>
+            </button>
+        </div>
+        <audio id="remoteAudio" autoplay></audio>
+    </div>
+
     <script src = "/socket.io/socket.io.js"></script>
     <script>
         // Logout handler
@@ -289,9 +300,8 @@
                         </div>
                     </div>
                 `;
-                // Ensure googleId is available for message API
-                const googleId = user.googleId || user.id || user._id;
-                item.addEventListener('click', () => showChatWithUser({...user, googleId}));
+                // Use _id consistently for all operations
+                item.addEventListener('click', () => showChatWithUser(user));
                 chatList.appendChild(item);
             });
         }
@@ -635,6 +645,204 @@
             } finally {
                 imageInput.value = '';
             }
+        });
+
+        // WebRTC and Call functionality
+        let localStream = null;
+        let peerConnection = null;
+        let isCallActive = false;
+        const configuration = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        const callFloatingWindow = document.getElementById('callFloatingWindow');
+        const callHeader = document.getElementById('callHeader');
+        const voiceCallBtn = document.getElementById('voiceCallBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+        const remoteAudio = document.getElementById('remoteAudio');
+        let isDragging = false, offsetX = 0, offsetY = 0;
+
+        // Draggable functionality
+        callHeader.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            offsetX = e.clientX - callFloatingWindow.offsetLeft;
+            offsetY = e.clientY - callFloatingWindow.offsetTop;
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (isDragging) {
+                callFloatingWindow.style.left = (e.clientX - offsetX) + 'px';
+                callFloatingWindow.style.top = (e.clientY - offsetY) + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', function() {
+            isDragging = false;
+        });
+
+        function showCallWindow(statusText) {
+            document.getElementById('callStatus').textContent = statusText || 'Calling...';
+            callFloatingWindow.classList.remove('hidden');
+        }
+
+        function hideCallWindow() {
+            callFloatingWindow.classList.add('hidden');
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            isCallActive = false;
+        }
+
+        // Voice call button handler
+        voiceCallBtn.addEventListener('click', async function() {
+            if (!selectedUser) {
+                alert('Please select a user to call');
+                return;
+            }
+            await initiateCall();
+        });
+
+        // End call button handler
+        endCallBtn.addEventListener('click', function() {
+            endCall();
+        });
+
+        // Initialize call
+        async function initiateCall() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                showCallWindow('Calling ' + selectedUser.name + '...');
+                isCallActive = true;
+
+                peerConnection = new RTCPeerConnection(configuration);
+                
+                // Add local stream to peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle remote stream
+                peerConnection.ontrack = function(event) {
+                    remoteAudio.srcObject = event.streams[0];
+                    showCallWindow('Connected');
+                };
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = function(event) {
+                    if (event.candidate) {
+                        socket.emit('callUser', {
+                            to: selectedUser._id,
+                            from: currentUserId,
+                            signalData: event.candidate
+                        });
+                    }
+                };
+
+                // Create offer
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                // Send offer to recipient
+                socket.emit('callUser', {
+                    to: selectedUser._id,
+                    from: currentUserId,
+                    signalData: offer
+                });
+
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                alert('Could not access microphone');
+                hideCallWindow();
+            }
+        }
+
+        // Accept incoming call
+        async function acceptCall(signalData) {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                showCallWindow('Connecting...');
+                isCallActive = true;
+
+                peerConnection = new RTCPeerConnection(configuration);
+                
+                // Add local stream to peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle remote stream
+                peerConnection.ontrack = function(event) {
+                    remoteAudio.srcObject = event.streams[0];
+                    showCallWindow('Connected');
+                };
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = function(event) {
+                    if (event.candidate) {
+                        socket.emit('acceptCall', {
+                            to: selectedUser._id,
+                            signalData: event.candidate
+                        });
+                    }
+                };
+
+                // Set remote description and create answer
+                await peerConnection.setRemoteDescription(signalData);
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                // Send answer back
+                socket.emit('acceptCall', {
+                    to: selectedUser._id,
+                    signalData: answer
+                });
+
+            } catch (error) {
+                console.error('Error accepting call:', error);
+                hideCallWindow();
+            }
+        }
+
+        // End call
+        function endCall() {
+            if (selectedUser && isCallActive) {
+                socket.emit('endCall', { to: selectedUser._id });
+            }
+            hideCallWindow();
+        }
+
+        // Socket listeners for call events
+        socket.on('incomingCall', ({ from, signalData }) => {
+            if (signalData.type === 'offer') {
+                if (confirm('Incoming call. Accept?')) {
+                    acceptCall(signalData);
+                }
+            } else if (signalData.candidate) {
+                if (peerConnection) {
+                    peerConnection.addIceCandidate(signalData);
+                }
+            }
+        });
+
+        socket.on('callAccepted', async ({ signalData }) => {
+            try {
+                if (signalData.type === 'answer') {
+                    await peerConnection.setRemoteDescription(signalData);
+                } else {
+                    await peerConnection.addIceCandidate(signalData);
+                }
+            } catch (error) {
+                console.error('Error handling call accepted:', error);
+            }
+        });
+
+        socket.on('callEnded', () => {
+            hideCallWindow();
         });
     </script>
 </html>

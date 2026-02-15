@@ -729,6 +729,18 @@
         // Initialize call
         async function initiateCall() {
             try {
+                // Clean up any existing connection first
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
+                }
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                iceCandidateQueue = [];
+                
+                // Add local stream to peer connection
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 showCallWindow('Calling ' + selectedUser.name + '...');
                 isCallActive = true;

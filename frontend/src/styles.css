@@ -1367,3 +1367,161 @@ body {
 .gap-4 {
     gap: 16px;
 }
+
+/* ===== File Transfer Panel ===== */
+.ft-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 360px;
+    max-height: 420px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 2500;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.ft-panel.hidden {
+    display: none !important;
+}
+
+.ft-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.ft-panel-header span i {
+    margin-right: 8px;
+    color: var(--accent-primary);
+}
+
+.ft-panel-body {
+    overflow-y: auto;
+    max-height: 340px;
+    padding: 8px;
+}
+
+.ft-item {
+    background: var(--bg-primary);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+
+.ft-item:last-child {
+    margin-bottom: 0;
+}
+
+.ft-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ft-icon {
+    font-size: 1.1rem;
+    color: var(--accent-primary);
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.ft-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.ft-filename {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+.ft-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.ft-progress-track {
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    margin: 10px 0;
+    overflow: hidden;
+}
+
+.ft-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    min-width: 0;
+}
+
+.ft-stats {
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.ft-speed,
+.ft-percent {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.ft-actions {
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.ft-btn {
+    background: var(--bg-tertiary);
+    border: none;
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.ft-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.ft-download {
+    color: var(--accent-primary) !important;
+}
+
+.ft-download:hover {
+    color: var(--accent-secondary) !important;
+}
+
+@media (max-width: 480px) {
+    .ft-panel {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        width: auto;
+    }
+}

@@ -125,6 +125,28 @@ io.on('connection',(socket) =>
 
 
 
+        // File transfer signaling (relay events between peers)
+        socket.on('fileOffer', (data) => {
+            const rid = userSocketMap.get(data.to);
+            if (rid) io.to(rid).emit('fileOffer', data);
+        });
+        socket.on('fileAccept', (data) => {
+            const rid = userSocketMap.get(data.to);
+            if (rid) { data.from = socket.userId; io.to(rid).emit('fileAccepted', data); }
+        });
+        socket.on('fileReject', (data) => {
+            const rid = userSocketMap.get(data.to);
+            if (rid) io.to(rid).emit('fileRejected', data);
+        });
+        socket.on('fileSignal', (data) => {
+            const rid = userSocketMap.get(data.to);
+            if (rid) { data.from = socket.userId; io.to(rid).emit('fileSignal', data); }
+        });
+        socket.on('fileCancel', (data) => {
+            const rid = userSocketMap.get(data.to);
+            if (rid) io.to(rid).emit('fileCancelled', data);
+        });
+
         socket.on('disconnect',() =>
             {
                 if (socket.userId)

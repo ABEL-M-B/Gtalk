@@ -121,7 +121,7 @@
                                 <i class="fas fa-image"></i>
                                 <span>Photos</span>
                             </div>
-                            <div class="attach-dropdown-item">
+                            <div class="attach-dropdown-item" id="docUploadBtn">
                                 <i class="fas fa-file"></i>
                                 <span>Document</span>
                             </div>
@@ -135,6 +135,7 @@
                             </div>
                         </div>
                         <input type="file" accept="image/*" id="imageInput" style="display:none">
+                        <input type="file" id="fileTransferInput" style="display:none">
                     </div>
                     <div class="input-wrapper">
                         <input type="text" placeholder="Type a message" class="message-input" id="messageInput">
@@ -235,6 +236,15 @@
             </button>
         </div>
         <audio id="remoteAudio" autoplay></audio>
+    </div>
+
+    <!-- File Transfers Panel -->
+    <div class="ft-panel hidden" id="ftPanel">
+        <div class="ft-panel-header">
+            <span><i class="fas fa-exchange-alt"></i> File Transfers</span>
+            <button class="icon-btn" id="ftPanelClose"><i class="fas fa-chevron-down"></i></button>
+        </div>
+        <div class="ft-panel-body" id="ftPanelBody"></div>
     </div>
 
     <script src = "/socket.io/socket.io.js"></script>
@@ -346,12 +356,14 @@
         reconnection: true
         })
 
-        let currentUserId =null;
+        let currentUserId = null;
+        let currentUserName = null;
         let selectedUser = null;
         fetch('/api/auth/user')
             .then(res => res.json())
             .then(data => {
                  currentUserId = data._id;
+                 currentUserName = data.name || data.displayName || 'Me';
                  // Set user avatar
                  const userAvatar = document.getElementById('userAvatar');
                  if (data.avatar) {
@@ -868,6 +880,528 @@
 
         socket.on('callEnded', () => {
             hideCallWindow();
+        });
+
+        // =====================================================
+        // FILE TRANSFER SYSTEM (P2P via WebRTC DataChannel)
+        // =====================================================
+
+        // -- Constants --
+        const FT_CHUNK_SIZE = 64 * 1024;            // 64KB per chunk
+        const FT_BUFFER_FULL = 256 * 1024;           // pause sending when buffer exceeds this
+        const FT_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+        const ftTransfers = {};                      // active transfers keyed by transferId
+
+        // -- Utility: generate unique ID --
+        function ftId() {
+            if (crypto.randomUUID) return crypto.randomUUID();
+            return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+        }
+
+        // -- Utility: format bytes --
+        function ftFmt(b) {
+            if (!b || b <= 0) return '0 B';
+            const u = ['B','KB','MB','GB','TB'];
+            const i = Math.floor(Math.log(b) / Math.log(1024));
+            return (b / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
+        }
+
+        // -- Utility: SHA-256 hash of ArrayBuffer, returns hex string --
+        async function ftHash(buf) {
+            const h = await crypto.subtle.digest('SHA-256', buf);
+            return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2,'0')).join('');
+        }
+
+        // ========== IndexedDB Helpers ==========
+        // Open (or create) a database for a transfer
+        function ftOpenDB(id) {
+            return new Promise((ok, fail) => {
+                const r = indexedDB.open('ft_' + id, 1);
+                r.onupgradeneeded = e => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('chunks')) db.createObjectStore('chunks');
+                    if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
+                };
+                r.onsuccess = () => ok(r.result);
+                r.onerror = () => fail(r.error);
+            });
+        }
+        // Put a value into a store
+        function ftPut(db, store, key, val) {
+            return new Promise((ok, fail) => {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).put(val, key);
+                tx.oncomplete = ok;
+                tx.onerror = () => fail(tx.error);
+            });
+        }
+        // Get a value from a store
+        function ftGet(db, store, key) {
+            return new Promise((ok, fail) => {
+                const tx = db.transaction(store, 'readonly');
+                const r = tx.objectStore(store).get(key);
+                r.onsuccess = () => ok(r.result);
+                r.onerror = () => fail(r.error);
+            });
+        }
+        // Get all keys from a store
+        function ftKeys(db, store) {
+            return new Promise((ok, fail) => {
+                const tx = db.transaction(store, 'readonly');
+                const r = tx.objectStore(store).getAllKeys();
+                r.onsuccess = () => ok(r.result);
+                r.onerror = () => fail(r.error);
+            });
+        }
+        // Delete the entire database for a transfer
+        function ftDelDB(id) { indexedDB.deleteDatabase('ft_' + id); }
+
+        // ========== UI Helpers ==========
+        // Show the floating transfers panel
+        function ftShowPanel() {
+            document.getElementById('ftPanel').classList.remove('hidden');
+        }
+        // Hide panel if empty
+        function ftHidePanel() {
+            if (!document.getElementById('ftPanelBody').children.length)
+                document.getElementById('ftPanel').classList.add('hidden');
+        }
+        // Create a transfer progress card
+        function ftCreateUI(t) {
+            ftShowPanel();
+            const el = document.createElement('div');
+            el.className = 'ft-item';
+            el.id = 'ft-' + t.id;
+            const icon = t.role === 'sender' ? 'fa-arrow-up' : 'fa-arrow-down';
+            const dir = t.role === 'sender' ? 'Sending to' : 'Receiving from';
+            el.innerHTML = `
+                <div class="ft-row">
+                    <i class="fas ${icon} ft-icon"></i>
+                    <div class="ft-details">
+                        <div class="ft-filename">${t.fileName}</div>
+                        <div class="ft-meta">${ftFmt(t.fileSize)} &middot; ${dir} ${t.peerName}</div>
+                    </div>
+                </div>
+                <div class="ft-progress-track"><div class="ft-progress-fill" style="width:0%"></div></div>
+                <div class="ft-row ft-stats">
+                    <span class="ft-speed">Waiting...</span>
+                    <span class="ft-percent">0%</span>
+                </div>
+                <div class="ft-row ft-actions">
+                    <button class="ft-btn ft-pause" onclick="ftTogglePause('${t.id}')" title="Pause/Resume"><i class="fas fa-pause"></i></button>
+                    <button class="ft-btn ft-cancel" onclick="ftCancelTransfer('${t.id}')" title="Cancel"><i class="fas fa-xmark"></i></button>
+                </div>`;
+            document.getElementById('ftPanelBody').appendChild(el);
+        }
+        // Update progress bar, speed, and percentage
+        function ftUpdateUI(id, bytes, total, speed, status) {
+            const el = document.getElementById('ft-' + id);
+            if (!el) return;
+            const pct = Math.min(100, Math.floor((bytes / total) * 100));
+            const fill = el.querySelector('.ft-progress-fill');
+            const sp = el.querySelector('.ft-speed');
+            const pc = el.querySelector('.ft-percent');
+            if (fill) fill.style.width = pct + '%';
+            if (sp) sp.textContent = status || (ftFmt(speed) + '/s');
+            if (pc) pc.textContent = pct + '%';
+        }
+        // Mark transfer complete, show download link (receiver) or dismiss (sender)
+        function ftDoneUI(id, url, name) {
+            const el = document.getElementById('ft-' + id);
+            if (!el) return;
+            el.querySelector('.ft-progress-fill').style.width = '100%';
+            el.querySelector('.ft-speed').textContent = 'Complete';
+            el.querySelector('.ft-percent').textContent = '100%';
+            const acts = el.querySelector('.ft-actions');
+            acts.innerHTML = (url ?
+                `<a href="${url}" download="${name}" class="ft-btn ft-download" title="Download"><i class="fas fa-download"></i></a>` : '') +
+                `<button class="ft-btn" onclick="ftDismiss('${id}')" title="Dismiss"><i class="fas fa-xmark"></i></button>`;
+        }
+        // Remove a transfer from the panel and clean up
+        function ftDismiss(id) {
+            const el = document.getElementById('ft-' + id);
+            if (el) el.remove();
+            ftHidePanel();
+            ftDelDB(id);
+            delete ftTransfers[id];
+        }
+
+        // ========== Speed Tracking ==========
+        // Called after each chunk sent/received to compute transfer speed
+        function ftTrackSpeed(t, chunkBytes) {
+            t.bytes += chunkBytes;
+            const now = Date.now();
+            if (!t.speedT) { t.speedT = now; t.speedB = 0; return 0; }
+            const dt = (now - t.speedT) / 1000;
+            if (dt >= 0.5) {
+                t.speed = (t.bytes - t.speedB) / dt;
+                t.speedT = now;
+                t.speedB = t.bytes;
+            }
+            return t.speed || 0;
+        }
+
+        // ===================== SENDER LOGIC =====================
+
+        // User picks a file and initiates a P2P transfer
+        async function ftSend(file) {
+            if (!selectedUser) { alert('Select a user first'); return; }
+            const id = ftId();
+            const totalChunks = Math.ceil(file.size / FT_CHUNK_SIZE);
+
+            // Create transfer state
+            const t = {
+                id, fileName: file.name, fileSize: file.size, totalChunks,
+                role: 'sender', peerId: selectedUser._id, peerName: selectedUser.name,
+                file, pc: null, dc: null, db: null,
+                sent: new Set(), bytes: 0, paused: false, cancelled: false,
+                speed: 0, speedT: null, speedB: 0, iceQueue: []
+            };
+            ftTransfers[id] = t;
+            ftCreateUI(t);
+            ftUpdateUI(id, 0, file.size, 0, 'Waiting for acceptance...');
+
+            // Send file offer to receiver via signaling
+            socket.emit('fileOffer', {
+                to: selectedUser._id, from: currentUserId,
+                senderName: currentUserName,
+                transferId: id, fileName: file.name,
+                fileSize: file.size, totalChunks
+            });
+        }
+
+        // Receiver accepted → create RTCPeerConnection + DataChannel
+        async function ftSenderConnect(t, alreadyHave) {
+            // Mark chunks the receiver already has (for resume)
+            t.sent = new Set(alreadyHave || []);
+            t.bytes = t.sent.size * FT_CHUNK_SIZE;
+
+            // Open IndexedDB to persist sender state
+            t.db = await ftOpenDB(t.id);
+            await ftPut(t.db, 'meta', 'info', {
+                id: t.id, fileName: t.fileName, fileSize: t.fileSize,
+                totalChunks: t.totalChunks, role: 'sender', peerId: t.peerId
+            });
+
+            // Create WebRTC peer connection
+            t.pc = new RTCPeerConnection({ iceServers: FT_ICE });
+
+            // Create the DataChannel for sending file chunks
+            t.dc = t.pc.createDataChannel('ft', { ordered: true });
+            t.dc.binaryType = 'arraybuffer';
+
+            // When DataChannel opens, start sending chunks
+            t.dc.onopen = () => {
+                ftUpdateUI(t.id, t.bytes, t.fileSize, 0, 'Sending...');
+                ftSendChunks(t);
+            };
+            t.dc.onclose = () => {
+                if (!t.cancelled && t.sent.size < t.totalChunks)
+                    ftUpdateUI(t.id, t.bytes, t.fileSize, 0, 'Disconnected');
+            };
+
+            // Relay ICE candidates to receiver
+            t.pc.onicecandidate = e => {
+                if (e.candidate) socket.emit('fileSignal', {
+                    to: t.peerId, transferId: t.id,
+                    signalData: { type: 'candidate', candidate: e.candidate }
+                });
+            };
+
+            // Create WebRTC offer and send via signaling
+            const offer = await t.pc.createOffer();
+            await t.pc.setLocalDescription(offer);
+            socket.emit('fileSignal', {
+                to: t.peerId, transferId: t.id,
+                signalData: { type: 'offer', sdp: offer }
+            });
+        }
+
+        // Send chunks sequentially with rate-limiting via bufferedAmount
+        async function ftSendChunks(t) {
+            for (let i = 0; i < t.totalChunks; i++) {
+                if (t.cancelled) return;
+                if (t.sent.has(i)) continue; // skip already-received chunks (resume)
+
+                // Pause loop — wait while paused
+                while (t.paused && !t.cancelled) await new Promise(r => setTimeout(r, 200));
+                if (t.cancelled) return;
+
+                // Rate-limit: wait if DataChannel buffer is full
+                while (t.dc.bufferedAmount > FT_BUFFER_FULL && !t.cancelled)
+                    await new Promise(r => setTimeout(r, 30));
+                if (t.cancelled) return;
+
+                // Slice the chunk from the file
+                const start = i * FT_CHUNK_SIZE;
+                const end = Math.min(start + FT_CHUNK_SIZE, t.file.size);
+                const buf = await t.file.slice(start, end).arrayBuffer();
+                // Compute chunk hash for integrity
+                const hash = await ftHash(buf);
+
+                // Send JSON header then binary data (DataChannel is ordered)
+                t.dc.send(JSON.stringify({ type: 'chunk', i, h: hash, s: buf.byteLength }));
+                t.dc.send(buf);
+
+                // Track progress
+                t.sent.add(i);
+                const spd = ftTrackSpeed(t, buf.byteLength);
+                ftUpdateUI(t.id, t.bytes, t.fileSize, spd);
+
+                // Persist progress to IndexedDB every 100 chunks
+                if (i % 100 === 0) await ftPut(t.db, 'meta', 'sent', [...t.sent]);
+            }
+
+            // All chunks sent — notify receiver
+            t.dc.send(JSON.stringify({ type: 'done' }));
+            ftDoneUI(t.id, null, null);
+            await ftPut(t.db, 'meta', 'status', 'completed');
+        }
+
+        // ===================== RECEIVER LOGIC =====================
+
+        // Incoming file offer — prompt user to accept or reject
+        function ftHandleOffer(data) {
+            const { from, senderName, transferId, fileName, fileSize, totalChunks } = data;
+            const name = senderName || from;
+
+            if (!confirm(`${name} wants to send you:\n${fileName} (${ftFmt(fileSize)})\n\nAccept?`)) {
+                socket.emit('fileReject', { to: from, transferId });
+                return;
+            }
+
+            // Create receiver transfer state
+            const t = {
+                id: transferId, fileName, fileSize, totalChunks,
+                role: 'receiver', peerId: from, peerName: name,
+                pc: null, dc: null, db: null,
+                received: new Set(), bytes: 0, paused: false, cancelled: false,
+                speed: 0, speedT: null, speedB: 0, pending: null, iceQueue: []
+            };
+            ftTransfers[transferId] = t;
+            ftCreateUI(t);
+            ftReceiverConnect(t);
+        }
+
+        // Set up receiver WebRTC connection and send acceptance
+        async function ftReceiverConnect(t) {
+            t.db = await ftOpenDB(t.id);
+
+            // Check for already-received chunks in IndexedDB (resume scenario)
+            const keys = await ftKeys(t.db, 'chunks');
+            t.received = new Set(keys.map(Number));
+            t.bytes = t.received.size * FT_CHUNK_SIZE;
+
+            // Persist receiver metadata
+            await ftPut(t.db, 'meta', 'info', {
+                id: t.id, fileName: t.fileName, fileSize: t.fileSize,
+                totalChunks: t.totalChunks, role: 'receiver', peerId: t.peerId
+            });
+
+            // Tell sender we accepted, include already-received chunk list
+            socket.emit('fileAccept', {
+                to: t.peerId, transferId: t.id,
+                receivedChunks: [...t.received]
+            });
+
+            // Create WebRTC peer connection
+            t.pc = new RTCPeerConnection({ iceServers: FT_ICE });
+
+            // Listen for DataChannel from sender
+            t.pc.ondatachannel = e => {
+                t.dc = e.channel;
+                t.dc.binaryType = 'arraybuffer';
+                ftSetupReceiverDC(t);
+            };
+
+            // Relay ICE candidates to sender
+            t.pc.onicecandidate = e => {
+                if (e.candidate) socket.emit('fileSignal', {
+                    to: t.peerId, transferId: t.id,
+                    signalData: { type: 'candidate', candidate: e.candidate }
+                });
+            };
+        }
+
+        // Wire up DataChannel event handlers on the receiver
+        function ftSetupReceiverDC(t) {
+            t.dc.onmessage = async e => {
+                // JSON string = control message (chunk header or done)
+                if (typeof e.data === 'string') {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === 'chunk') {
+                        // Next binary message will be this chunk's data
+                        t.pending = msg;
+                    } else if (msg.type === 'done') {
+                        // All chunks arrived — merge and offer download
+                        await ftMerge(t);
+                    }
+                } else if (t.pending) {
+                    // Binary message = chunk data (follows a chunk header)
+                    const hdr = t.pending;
+                    t.pending = null;
+                    const buf = e.data;
+
+                    // Validate chunk hash
+                    const h = await ftHash(buf);
+                    if (h !== hdr.h) {
+                        console.warn('Chunk', hdr.i, 'hash mismatch — skipping');
+                        return;
+                    }
+
+                    // Store valid chunk in IndexedDB
+                    await ftPut(t.db, 'chunks', hdr.i, buf);
+                    t.received.add(hdr.i);
+
+                    // Update progress and speed
+                    const spd = ftTrackSpeed(t, buf.byteLength);
+                    ftUpdateUI(t.id, t.bytes, t.fileSize, spd);
+
+                    // Persist progress every 100 chunks
+                    if (t.received.size % 100 === 0)
+                        await ftPut(t.db, 'meta', 'received', [...t.received]);
+                }
+            };
+            t.dc.onclose = () => {
+                if (!t.cancelled && t.received.size < t.totalChunks)
+                    ftUpdateUI(t.id, t.bytes, t.fileSize, 0, 'Disconnected');
+            };
+            t.dc.onopen = () => {
+                ftUpdateUI(t.id, t.bytes, t.fileSize, 0, 'Receiving...');
+            };
+        }
+
+        // Merge all stored chunks into a Blob and trigger download
+        async function ftMerge(t) {
+            ftUpdateUI(t.id, t.fileSize, t.fileSize, 0, 'Merging file...');
+            const parts = [];
+            for (let i = 0; i < t.totalChunks; i++) {
+                const chunk = await ftGet(t.db, 'chunks', i);
+                if (!chunk) {
+                    ftUpdateUI(t.id, t.bytes, t.fileSize, 0, 'Missing chunk ' + i);
+                    return;
+                }
+                parts.push(chunk);
+            }
+            // Create Blob from chunks (memory efficient — no single giant buffer)
+            const blob = new Blob(parts);
+            const url = URL.createObjectURL(blob);
+            await ftPut(t.db, 'meta', 'status', 'completed');
+            ftDoneUI(t.id, url, t.fileName);
+        }
+
+        // ===================== SIGNALING =====================
+        // Handle WebRTC offer/answer/ICE for file transfer connections
+        async function ftHandleSignal(data) {
+            const { from, transferId, signalData } = data;
+            const t = ftTransfers[transferId];
+            if (!t) return;
+            try {
+                if (signalData.type === 'offer') {
+                    await t.pc.setRemoteDescription(signalData.sdp);
+                    const answer = await t.pc.createAnswer();
+                    await t.pc.setLocalDescription(answer);
+                    socket.emit('fileSignal', {
+                        to: from, transferId,
+                        signalData: { type: 'answer', sdp: answer }
+                    });
+                    // Flush queued ICE candidates
+                    for (const c of t.iceQueue) await t.pc.addIceCandidate(c);
+                    t.iceQueue = [];
+                } else if (signalData.type === 'answer') {
+                    await t.pc.setRemoteDescription(signalData.sdp);
+                    for (const c of t.iceQueue) await t.pc.addIceCandidate(c);
+                    t.iceQueue = [];
+                } else if (signalData.type === 'candidate') {
+                    // Queue candidates until remote description is set
+                    if (t.pc.remoteDescription) {
+                        await t.pc.addIceCandidate(signalData.candidate);
+                    } else {
+                        t.iceQueue.push(signalData.candidate);
+                    }
+                }
+            } catch (err) {
+                console.error('File transfer signal error:', err);
+            }
+        }
+
+        // ===================== PAUSE / CANCEL =====================
+        // Toggle pause state for a transfer
+        function ftTogglePause(id) {
+            const t = ftTransfers[id];
+            if (!t) return;
+            t.paused = !t.paused;
+            const btn = document.querySelector('#ft-' + id + ' .ft-pause i');
+            if (btn) btn.className = t.paused ? 'fas fa-play' : 'fas fa-pause';
+            ftUpdateUI(id, t.bytes, t.fileSize, t.speed,
+                t.paused ? 'Paused' : (t.role === 'sender' ? 'Sending...' : 'Receiving...'));
+        }
+
+        // Cancel a transfer, close connections, clean up
+        function ftCancelTransfer(id) {
+            const t = ftTransfers[id];
+            if (!t) return;
+            t.cancelled = true;
+            if (t.dc) try { t.dc.close(); } catch(e) {}
+            if (t.pc) try { t.pc.close(); } catch(e) {}
+            socket.emit('fileCancel', { to: t.peerId, transferId: id });
+            const el = document.getElementById('ft-' + id);
+            if (el) el.remove();
+            ftHidePanel();
+            ftDelDB(id);
+            delete ftTransfers[id];
+        }
+
+        // ===================== SOCKET LISTENERS =====================
+        socket.on('fileOffer', ftHandleOffer);
+
+        socket.on('fileAccepted', ({ from, transferId, receivedChunks }) => {
+            const t = ftTransfers[transferId];
+            if (!t) return;
+            ftUpdateUI(transferId, 0, t.fileSize, 0, 'Accepted, connecting...');
+            ftSenderConnect(t, receivedChunks);
+        });
+
+        socket.on('fileRejected', ({ transferId }) => {
+            const t = ftTransfers[transferId];
+            if (t) {
+                ftUpdateUI(transferId, 0, t.fileSize, 0, 'Rejected');
+                setTimeout(() => ftDismiss(transferId), 3000);
+            }
+        });
+
+        socket.on('fileSignal', ftHandleSignal);
+
+        socket.on('fileCancelled', ({ transferId }) => {
+            const t = ftTransfers[transferId];
+            if (t) {
+                t.cancelled = true;
+                if (t.dc) try { t.dc.close(); } catch(e) {}
+                if (t.pc) try { t.pc.close(); } catch(e) {}
+                ftUpdateUI(transferId, t.bytes, t.fileSize, 0, 'Cancelled by peer');
+                setTimeout(() => ftDismiss(transferId), 3000);
+            }
+        });
+
+        // ===================== ATTACH: DOCUMENT TRIGGER =====================
+        // Wire the Document item in the attach dropdown to file transfer
+        document.getElementById('docUploadBtn').addEventListener('click', () => {
+            if (!selectedUser) { alert('Select a user first'); return; }
+            document.getElementById('fileTransferInput').click();
+            document.getElementById('attachDropdown').classList.add('hidden');
+        });
+
+        // When user picks a file, start the P2P transfer
+        document.getElementById('fileTransferInput').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (file) ftSend(file);
+            e.target.value = '';
+        });
+
+        // Toggle file transfers panel visibility
+        document.getElementById('ftPanelClose').addEventListener('click', () => {
+            document.getElementById('ftPanel').classList.toggle('hidden');
         });
     </script>
 </html>

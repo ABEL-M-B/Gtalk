@@ -375,6 +375,18 @@
                 socket.emit('register',currentUserId);
             });
 
+        // Handle socket reconnection
+        socket.on('reconnect', () => {
+            console.log('Socket reconnected, re-registering user');
+            if (currentUserId) {
+                socket.emit('register', currentUserId);
+            }
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.log('Socket disconnected:', reason);
+        });
+
         function showChatWithUser(user) {
             selectedUser = user
             document.getElementById('emptyState').classList.add('hidden');
@@ -740,7 +752,7 @@
                 }
                 iceCandidateQueue = [];
                 
-                // Add local stream to peer connection
+                // Get user media
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 showCallWindow('Calling ' + selectedUser.name + '...');
                 isCallActive = true;

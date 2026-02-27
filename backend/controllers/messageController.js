@@ -45,7 +45,8 @@ const sendMessage = async (req, res) => {
             return res.status(400).json({ message: "Recipient and text are required" });
         }
 
-        const message = new Message({ from, to, text }); // Remove manual timestamp; schema has default
+        const senderName = req.user.name || req.user.displayName || 'User';
+        const message = new Message({ from, to, text, senderName });
         await message.save();
 
         res.json({ success: true, message });
@@ -54,7 +55,85 @@ const sendMessage = async (req, res) => {
     }
 };
 
+const markMessagesAsRead = async (req, res) => {
+    try {
+        const to = req.user._id;
+        const { from } = req.query;
+
+        if (!from) {
+            return res.status(400).json({ message: "Sender ID is required" });
+        }
+
+        // Mark all text messages from this sender as read
+        const textUpdate = await Message.updateMany(
+            { from, to, isRead: false },
+            { isRead: true }
+        );
+
+        // Mark all image messages from this sender as read
+        const imageUpdate = await ImageMessage.updateMany(
+            { from, to, isRead: false },
+            { isRead: true }
+        );
+
+        const totalUpdated = textUpdate.modifiedCount + imageUpdate.modifiedCount;
+        res.json({ success: true, message: 'Messages marked as read', updated: totalUpdated });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+
+const getUnreadCount = async (req, res) => {
+    try {
+        const to = req.user._id;
+
+        // Count unread text messages
+        const textUnread = await Message.countDocuments({ to, isRead: false });
+
+        // Count unread image messages
+        const imageUnread = await ImageMessage.countDocuments({ to, isRead: false });
+
+        const total = textUnread + imageUnread;
+        res.json({ success: true, unreadCount: total, textUnread, imageUnread });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+
+const getUnreadByUser = async (req, res) => {
+    try {
+        const to = req.user._id;
+
+        // Get unread messages grouped by sender
+        const textUnread = await Message.aggregate([
+            { $match: { to, isRead: false } },
+            { $group: { _id: '$from', count: { $sum: 1 } } }
+        ]);
+
+        const imageUnread = await ImageMessage.aggregate([
+            { $match: { to, isRead: false } },
+            { $group: { _id: '$from', count: { $sum: 1 } } }
+        ]);
+
+        // Combine counts by user
+        const unreadByUser = {};
+        textUnread.forEach(u => {
+            unreadByUser[u._id] = (unreadByUser[u._id] || 0) + u.count;
+        });
+        imageUnread.forEach(u => {
+            unreadByUser[u._id] = (unreadByUser[u._id] || 0) + u.count;
+        });
+
+        res.json({ success: true, unreadByUser });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+};
+
 module.exports = {
     getMessages,
-    sendMessage
+    sendMessage,
+    markMessagesAsRead,
+    getUnreadCount,
+    getUnreadByUser
 };

@@ -7,6 +7,8 @@ const imageMessageSchema = new mongoose.Schema(
         to: { type: mongoose.Schema.Types.ObjectId,ref: 'User', required: true},
         url: {type: String, required: true},
         public_id: {type:String,required: true},
+        senderName: {type:String,required:true},
+        isRead: {type:Boolean,default:false},
         timestamp: {type:Date,default: Date.now}
     }
 );

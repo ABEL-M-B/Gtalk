@@ -15,7 +15,10 @@
             <!-- Sidebar Header -->
             <div class="sidebar-header">
                 <div class="user-profile">
-                    <img src="https://via.placeholder.com/40" alt="Profile" class="profile-img" id="userAvatar">
+                    <div style="position:relative;display:inline-block;">
+                        <img src="https://via.placeholder.com/40" alt="Profile" class="profile-img" id="userAvatar">
+                        <span id="unreadBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:#25D366;color:#fff;font-weight:bold;border-radius:50%;min-width:20px;height:20px;line-height:20px;font-size:12px;z-index:2;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:0 6px;"></span>
+                    </div>
                 </div>
                 <div class="header-actions">
                     <button class="icon-btn" title="Communities">
@@ -298,12 +301,20 @@
             users.forEach(user => {
                 const item = document.createElement('div');
                 item.className = 'chat-item';
+                item.setAttribute('data-user-id', user._id);
                 const avatarUrl = user.avatar ? '/api/proxy/avatar?url=' + encodeURIComponent(user.avatar) : 'https://dummyimage.com/49x49/cccccc/000000&text=Avatar';
+                // Badge shown only if THIS user has unread messages
+                const unreadCount = unreadCounts[user._id] || 0;
+                const badge = unreadCount > 0 ? `<span class="chat-unread-badge" style="position:absolute;top:2px;right:2px;background:#25D366;color:#fff;font-weight:bold;border-radius:50%;min-width:20px;height:20px;line-height:20px;font-size:12px;z-index:2;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:0 6px;">${unreadCount > 99 ? '99+' : unreadCount}</span>` : '';
+                const nameStyle = unreadCount > 0 ? 'font-weight: 600;' : '';
                 item.innerHTML = `
-                    <img src="${avatarUrl}" class="chat-avatar" alt="${user.name}" loading="lazy" onerror="this.src='https://dummyimage.com/49x49/cccccc/000000&text=Avatar'">
+                    <div style="position:relative;display:inline-block;">
+                        <img src="${avatarUrl}" class="chat-avatar" alt="${user.name}" loading="lazy" onerror="this.src='https://dummyimage.com/49x49/cccccc/000000&text=Avatar'">
+                        ${badge}
+                    </div>
                     <div class="chat-info">
                         <div class="chat-header">
-                            <span class="chat-name">${user.name}</span>
+                            <span class="chat-name" style="${nameStyle}">${user.name}</span>
                         </div>
                         <div class="chat-preview">
                             <span class="last-message">${user.about || ''}</span>
@@ -351,6 +362,132 @@
         
 
         //chat scripts
+        // --- Unread message tracking with backend persistence ---
+        const unreadCounts = {};
+        let totalUnread = 0;
+        const unreadBadge = document.getElementById('unreadBadge');
+        const originalTitle = document.title;
+
+        // Request notification permission on load
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        // Play notification sound
+        function playNotificationSound() {
+            const audio = new Audio('data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA==');
+            audio.play().catch(() => {});
+        }
+
+        // Show browser notification
+        function showNotification(title, options = {}) {
+            if (Notification.permission === 'granted') {
+                const notification = new Notification(title, {
+                    icon: '/favicon.ico',
+                    badge: '/favicon.ico',
+                    ...options
+                });
+                notification.onclick = () => {
+                    window.focus();
+                    notification.close();
+                };
+            }
+        }
+
+        // Load unread counts from backend (per user)
+        async function loadUnreadCount() {
+            try {
+                const res = await fetch('/api/messages/unread-by-user');
+                const data = await res.json();
+                if (data.success) {
+                    Object.assign(unreadCounts, data.unreadByUser);
+                    totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+                    updateUnreadBadge();
+                }
+            } catch (error) {
+                console.error('Error loading unread count:', error);
+            }
+        }
+
+        function updateUnreadBadge() {
+            if (totalUnread > 0) {
+                unreadBadge.textContent = totalUnread > 99 ? '99+' : totalUnread;
+                unreadBadge.style.display = '';
+                document.title = `(${totalUnread}) ${originalTitle}`;
+            } else {
+                unreadBadge.style.display = 'none';
+                document.title = originalTitle;
+            }
+            // Also re-render chat list to update per-sender badges
+            if (typeof fetchAllUsers === 'function') fetchAllUsers();
+        }
+
+        // Mark all messages from a user as read via WebSocket (lightweight, no refetch needed)
+        function markChatAsRead(userId) {
+            if (!userId || !currentUserId) return;
+            
+            // Send read receipt via WebSocket (hidden from user, DB updated on backend)
+            socket.emit('readReceipt', { from: userId, to: currentUserId });
+            
+            // Update local state immediately
+            if (unreadCounts[userId]) {
+                delete unreadCounts[userId];
+            }
+            
+            // Update global unread badge
+            totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+            updateUnreadBadge();
+            
+            // Update ticks to blue immediately for received messages from this user
+            const messageElements = document.querySelectorAll(`.message.received[data-received-from="${userId}"]`);
+            messageElements.forEach(el => {
+                const tick = el.querySelector('i.fa-check-double');
+                if (tick) tick.style.color = '#31a24c';
+            });
+            
+            // Remove unread badge from this specific user in chat list
+            const userItem = document.querySelector(`[data-user-id="${userId}"]`);
+            if (userItem) {
+                const badge = userItem.querySelector('.chat-unread-badge');
+                if (badge) badge.remove();
+                const nameEl = userItem.querySelector('.chat-name');
+                if (nameEl) nameEl.style.fontWeight = '400';
+            }
+        }
+
+        // Load and notify about unread messages from while user was offline
+        async function loadOfflineMessages() {
+            try {
+                const res = await fetch('/api/messages/unread-by-user');
+                const data = await res.json();
+                
+                if (data.success && Object.keys(data.unreadByUser).length > 0) {
+                    // For each sender with unread messages
+                    for (const [senderId, count] of Object.entries(data.unreadByUser)) {
+                        if (count > 0) {
+                            // Find sender name from the users list
+                            fetch('/api/users')
+                                .then(r => r.json())
+                                .then(usersData => {
+                                    const sender = usersData.users.find(u => u._id === senderId);
+                                    if (sender) {
+                                        // Show browser notification about offline messages
+                                        if (Notification.permission === 'granted') {
+                                            new Notification(`${sender.name}`, {
+                                                body: `${count} unread message${count > 1 ? 's' : ''}`,
+                                                icon: sender.avatar ? '/api/proxy/avatar?url=' + encodeURIComponent(sender.avatar) : '/favicon.ico',
+                                                tag: 'offline-' + senderId
+                                            });
+                                        }
+                                    }
+                                });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading offline messages:', error);
+            }
+        }
         const socket = io({
         transports: ['websocket', 'polling'],
         reconnection: true
@@ -373,6 +510,10 @@
                      this.src = 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
                  };
                 socket.emit('register',currentUserId);
+                // Load unread count from backend on login
+                loadUnreadCount();
+                // Load and notify about offline messages
+                loadOfflineMessages();
             });
 
         // Handle socket reconnection
@@ -380,6 +521,10 @@
             console.log('Socket reconnected, re-registering user');
             if (currentUserId) {
                 socket.emit('register', currentUserId);
+                // Reload unread count
+                loadUnreadCount();
+                // Check for offline messages
+                loadOfflineMessages();
             }
         });
 
@@ -388,7 +533,7 @@
         });
 
         function showChatWithUser(user) {
-            selectedUser = user
+            selectedUser = user;
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('chatContent').classList.remove('hidden');
             document.getElementById('contactName').textContent = user.name;
@@ -399,6 +544,8 @@
             };
             document.getElementById('contactStatus').textContent = user.status || '';
             fetchMessagesWithUser(user);
+            // Mark this chat as read on the backend
+            markChatAsRead(user._id);
         }
 
         // Helper to render messages
@@ -408,36 +555,17 @@
             wrapper.innerHTML = '';
             
             messages.forEach(msg => {
-                const div = document.createElement('div');
-                // Sent/received styling
                 const isSent = String(msg.from) === String(currentUserId);
-                div.className = `message ${isSent ? 'sent' : 'received'}`;
-
-                // Check if it's an image message
-                if (msg.url) {
-                    div.innerHTML = `
-                        <div class="message-content message-image">
-                            <div style="width: 300px; height: 200px; background: #374045; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
-                                <i class="fas fa-image" style="font-size: 2rem; color: #8696a0;"></i>
-                            </div>
-                            <span class="message-time">
-                                ${new Date(msg.timestamp).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}
-                            </span>
-                        </div>
-                    `;
-                    
-                    wrapper.appendChild(div);
-                    
-                    // Load actual image
+                const div = renderMessageWithStatus(msg, isSent);
+                wrapper.appendChild(div);
+                
+                // For image messages, load the actual image if it's still a placeholder
+                if (msg.url && !div.querySelector('img')) {
                     const img = new Image();
                     img.src = msg.url;
                     img.className = 'shared-image';
                     img.setAttribute('data-fullsize', msg.url);
                     img.onload = function() {
-                        // Replace placeholder with actual image
                         const placeholder = div.querySelector('.message-content > div');
                         if (placeholder) {
                             placeholder.replaceWith(img);
@@ -446,43 +574,45 @@
                     img.addEventListener('click', function() {
                         openLightbox(this.dataset.fullsize);
                     });
-                } else {
-                    div.innerHTML = `
-                        <div class="message-content">
-                            <p>${msg.text}</p>
-                            <span class="message-time">
-                                ${new Date(msg.timestamp).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}
-                            </span>
-                        </div>
-                    `;
-                    wrapper.appendChild(div);
                 }
             });
             
-            // Scroll to bottom immediately since placeholders are already sized
             requestAnimationFrame(() => {
                 container.scrollTop = container.scrollHeight;
             });
         }
 
         // Helper to add message to UI
-        function addMessageToUI(msg, isImage) {
+        // Render message with read status ticks
+        function renderMessageWithStatus(msg, isSent) {
             const div = document.createElement('div');
-            const isSent = String(msg.from) === String(currentUserId);
             div.className = `message ${isSent ? 'sent' : 'received'}`;
             
-            if (isImage) {
+            // Add data attribute to track which user this message was sent to (for read receipt updates)
+            if (isSent) {
+                div.setAttribute('data-sent-to', msg.to);
+            } else {
+                div.setAttribute('data-received-from', msg.from);
+            }
+            
+            // Determine tick icon based on message status
+            let tickIcon = '';
+            if (isSent) {
+                if (msg.isRead) {
+                    tickIcon = '<i class="fas fa-check-double" style="color: #31a24c; font-size: 12px; margin-left: 4px;"></i>'; // Blue tick
+                } else {
+                    tickIcon = '<i class="fas fa-check-double" style="color: #8696a0; font-size: 12px; margin-left: 4px;"></i>'; // Gray double tick
+                }
+            }
+            
+            if (msg.url) {
+                // Image message with status
                 div.innerHTML = `
                     <div class="message-content message-image">
                         <img src="${msg.url}" alt="Image" class="shared-image" data-fullsize="${msg.url}">
-                        <span class="message-time">
-                            ${new Date(msg.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
+                        <span class="message-time" style="display: flex; align-items: center;">
+                            ${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            ${tickIcon}
                         </span>
                     </div>
                 `;
@@ -490,38 +620,71 @@
                     openLightbox(this.dataset.fullsize);
                 });
             } else {
+                // Text message with status
                 div.innerHTML = `
                     <div class="message-content">
                         <p>${msg.text}</p>
-                        <span class="message-time">
-                            ${new Date(msg.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
+                        <span class="message-time" style="display: flex; align-items: center;">
+                            ${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            ${tickIcon}
                         </span>
                     </div>
                 `;
             }
             
+            return div;
+        }
+
+        function addMessageToUI(msg, isImage) {
+            const isSent = String(msg.from) === String(currentUserId);
+            const div = renderMessageWithStatus(msg, isSent);
             document.getElementById('messagesWrapper').appendChild(div);
             document.getElementById('messagesContainer').scrollTop = document.getElementById('messagesContainer').scrollHeight;
         }
 
         // Listen for incoming text messages
         socket.on('receiveMessage', (msg) => {
-            // Show message if chatting with the sender OR if you sent it
-            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id || 
-                (msg.from === currentUserId && msg.to === selectedUser._id))) {
+            const isCurrentChat = selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id || 
+                (msg.from === currentUserId && msg.to === selectedUser._id));
+            if (isCurrentChat) {
                 addMessageToUI(msg, false);
+                // Mark as read immediately since viewing this chat
+                markChatAsRead(msg.from);
+            } else {
+                // Only increment unread count if the message is sent TO me
+                if (msg.to === currentUserId) {
+                    unreadCounts[msg.from] = (unreadCounts[msg.from] || 0) + 1;
+                    totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+                    updateUnreadBadge();
+                    playNotificationSound();
+                    // Show browser notification with sender name from message
+                    showNotification(msg.senderName || 'New Message', {
+                        body: msg.text.substring(0, 60),
+                        tag: 'message-' + msg.from
+                    });
+                }
             }
         });
 
         // Listen for incoming image messages
         socket.on('receiveImage', (msg) => {
-            // Show image if chatting with the sender OR if you sent it
-            if (selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id ||
-                (msg.from === currentUserId && msg.to === selectedUser._id))) {
+            const isCurrentChat = selectedUser && (msg.from === selectedUser._id || msg.to === selectedUser._id ||
+                (msg.from === currentUserId && msg.to === selectedUser._id));
+            if (isCurrentChat) {
                 addMessageToUI(msg, true);
+                markChatAsRead(msg.from);
+            } else {
+                if (msg.to === currentUserId) {
+                    unreadCounts[msg.from] = (unreadCounts[msg.from] || 0) + 1;
+                    totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+                    updateUnreadBadge();
+                    playNotificationSound();
+                    // Show browser notification with sender name from message
+                    showNotification(msg.senderName || 'New Message', {
+                        body: '📷 Sent you an image',
+                        tag: 'message-' + msg.from
+                    });
+                }
             }
         });
 
@@ -904,6 +1067,19 @@
 
         socket.on('callEnded', () => {
             hideCallWindow();
+        });
+
+        // Listener for read receipt confirmation - update sent message ticks to blue
+        socket.on('readReceipt', ({ from, to }) => {
+            // from = who read our messages, to = us (sender)
+            if (currentUserId === to) {
+                // Update ticks for messages we sent to this user
+                const messageElements = document.querySelectorAll(`.message.sent[data-sent-to="${from}"]`);
+                messageElements.forEach(el => {
+                    const tick = el.querySelector('i.fa-check-double');
+                    if (tick) tick.style.color = '#31a24c';
+                });
+            }
         });
 
         // =====================================================

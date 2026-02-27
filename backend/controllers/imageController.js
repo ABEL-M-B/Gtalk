@@ -29,8 +29,8 @@ const uploadImageMessage = async (req,res) =>
                             from,
                             to,
                             url: result.secure_url,
-                            public_id: result.public_id
-
+                            public_id: result.public_id,
+                            senderName: req.user.name || req.user.displayName || 'User'
                         }
                     );
                     await imageMessage.save();

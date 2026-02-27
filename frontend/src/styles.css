@@ -748,6 +748,9 @@ body {
     float: right;
     margin-left: 8px;
     margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .message.received .message-time {
@@ -756,6 +759,22 @@ body {
 
 .message-content .message-status {
     font-size: 0.875rem;
+}
+
+/* Message Status Ticks */
+.message.sent .message-time i.fa-check-double {
+    margin-left: 4px;
+    font-size: 12px;
+}
+
+.message.sent .message-time i.fa-check-double[style*="color: #8696a0"] {
+    /* Gray tick - message sent */
+    color: #8696a0 !important;
+}
+
+.message.sent .message-time i.fa-check-double[style*="color: #31a24c"] {
+    /* Blue tick - message read */
+    color: #31a24c !important;
 }
 
 /* Message with Image */

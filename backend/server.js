@@ -147,6 +147,35 @@ io.on('connection',(socket) =>
             if (rid) io.to(rid).emit('fileCancelled', data);
         });
 
+        // Handle read receipts - lightweight WebSocket-based read status
+        socket.on('readReceipt', async (data) => {
+            const { from, to } = data;
+            if (!from || !to) return;
+
+            try {
+                const Message = require('./models/messageModel');
+                const ImageMessage = require('./models/ImageMessageModel');
+
+                // Update messages in DB (from = sender, to = recipient reading them)
+                await Message.updateMany(
+                    { from, to, isRead: false },
+                    { isRead: true }
+                );
+                await ImageMessage.updateMany(
+                    { from, to, isRead: false },
+                    { isRead: true }
+                );
+
+                // Send confirmation back to sender so their ticks turn blue
+                const senderSocketId = userSocketMap.get(from);
+                if (senderSocketId) {
+                    io.to(senderSocketId).emit('readReceipt', { from: to, to: from });
+                }
+            } catch (err) {
+                console.error('Error processing read receipt:', err);
+            }
+        });
+
         socket.on('disconnect',() =>
             {
                 if (socket.userId)

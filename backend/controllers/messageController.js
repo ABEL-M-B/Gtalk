@@ -5,24 +5,38 @@ const getMessages = async (req, res) => {
     try {
         const from = req.user._id
         const to = req.query.to;
+        const after = req.query.after;
 
         if (!to) {
             return res.status(400).json({ message: "The recipient is needed to fetch messages" });
         }
 
-        const textMessages = await Message.find({
+        const baseFilter = {
             $or: [
                 { from, to },
                 { from: to, to: from }
             ]
-        });
+        };
 
-        const imageMessages = await ImageMessage.find({
-            $or: [
-                { from, to },
-                { from: to, to: from }
-            ]
-        });
+        let sinceDate = null;
+        if (after) {
+            const parsed = new Date(after);
+            if (!Number.isNaN(parsed.getTime())) {
+                sinceDate = parsed;
+            }
+        }
+
+        const textFilter = sinceDate
+            ? { ...baseFilter, timestamp: { $gt: sinceDate } }
+            : baseFilter;
+
+        const imageFilter = sinceDate
+            ? { ...baseFilter, timestamp: { $gt: sinceDate } }
+            : baseFilter;
+
+        const textMessages = await Message.find(textFilter);
+
+        const imageMessages = await ImageMessage.find(imageFilter);
 
         // Merge and sort by timestamp
         const messages = [...textMessages, ...imageMessages].sort(

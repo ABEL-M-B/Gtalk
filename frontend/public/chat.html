@@ -251,7 +251,11 @@
     </div>
 
     <script src = "/socket.io/socket.io.js"></script>
-    <script>
+
+    <script type="module">
+        import { getMessages, storeMessage} from '../src/message-db.js';
+
+
         // Logout handler
         document.getElementById('logoutBtn').addEventListener('click', function() {
             window.location.href = '/api/auth/logout';
@@ -529,10 +533,8 @@
         });
 
         socket.on('disconnect', (reason) => {
-            console.log('Socket disconnected:', reason);
-        });
-
-        function showChatWithUser(user) {
+            console.log('Socket disconnected:', reason);});
+        async function showChatWithUser(user) {
             selectedUser = user;
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('chatContent').classList.remove('hidden');
@@ -543,9 +545,60 @@
                 this.src = 'https://dummyimage.com/40x40/cccccc/000000&text=Avatar';
             };
             document.getElementById('contactStatus').textContent = user.status || '';
-            fetchMessagesWithUser(user);
+                // 1. Load messages from IndexedDB
+            const localMessages = await getMessages(user._id);
+            renderMessages(localMessages);
+
+            // 2. Optionally, fetch new messages from backend
+            let latestTimestamp = null;
+            if (localMessages.length > 0) {
+                latestTimestamp = localMessages[localMessages.length - 1].timestamp;
+            }
+            const res = await fetch(`/api/messages?to=${user._id}&after=${encodeURIComponent(latestTimestamp || '')}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.messages && data.messages.length > 0) {
+                    const allMessages = dedupeMessages([...localMessages, ...data.messages]);
+                    renderMessages(allMessages);
+                    try {
+                        await storeMessage(user._id, data.messages);
+                    } catch (e) {
+                        console.error('IndexedDB store failed:', e);
+                    }
+        }
+    }
+           
             // Mark this chat as read on the backend
             markChatAsRead(user._id);
+        }
+
+        function messageDedupKey(msg) {
+            if (msg && msg._id) {
+                return `id:${String(msg._id)}`;
+            }
+
+            return [
+                String(msg?.from || ''),
+                String(msg?.to || ''),
+                String(msg?.timestamp || ''),
+                String(msg?.text || ''),
+                String(msg?.url || '')
+            ].join('|');
+        }
+
+        function dedupeMessages(messages) {
+            const seen = new Set();
+            const unique = [];
+
+            for (const msg of (messages || [])) {
+                const key = messageDedupKey(msg);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    unique.push(msg);
+                }
+            }
+
+            return unique.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         }
 
         // Helper to render messages
@@ -553,8 +606,10 @@
             const wrapper = document.getElementById('messagesWrapper');
             const container = document.getElementById('messagesContainer');
             wrapper.innerHTML = '';
-            
-            messages.forEach(msg => {
+
+            const safeMessages = dedupeMessages(messages || []);
+
+            safeMessages.forEach(msg => {
                 const isSent = String(msg.from) === String(currentUserId);
                 const div = renderMessageWithStatus(msg, isSent);
                 wrapper.appendChild(div);

@@ -37,15 +37,5 @@ Privacy & security notes
 - Use TURN relays where necessary to guarantee connectivity, but be aware relayed media passes through the TURN server.
 - OAuth is used for authentication; ensure tokens and callback URLs are stored and transmitted securely when you add or configure a backend.
 
-Make the live demo shine
-
-- The live site (https://gtalk-f3k6.onrender.com/) is the best place to demo the app — include screencaptures or a short GIF here in the README to highlight the UI and flow.
-- Consider adding a short video or step‑by‑step screenshots that show: sign-in (OAuth), creating/joining a room, and a successful P2P message or call.
-
-Contact / Improvements
-
-If you'd like, I can help:
-- Draft polished screenshots and an intro GIF for the README.
-- Add a short architecture diagram and a small `docs/` folder describing the signaling and auth flow.
 
 
